@@ -1,7 +1,7 @@
 from typing import Awaitable, Callable
 
 import aiohttp
-from attr import dataclass
+from dataclasses import dataclass
 
 from ..models.proxy_address import ProxyAddress
 

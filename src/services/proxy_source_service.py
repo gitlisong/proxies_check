@@ -29,15 +29,13 @@ class ProxySourceService:
         for result in results:
             if isinstance(result, list):
                 proxy_addresses.extend(result)
-            elif isinstance(result, Exception):
-                log.warning(result)
         proxy_addresses = list(set(proxy_addresses))
         return proxy_addresses
 
     async def fetch_source(self, proxy_source: ProxySource) -> list[ProxyAddress]:
         try:
             async with self.session.get(
-                proxy_source.proxy_source_info.url,
+                proxy_source.url,
                 headers=self.headers,
                 timeout=self.client_timeout,
             ) as response:
@@ -48,7 +46,18 @@ class ProxySourceService:
         except Exception as e:
             err_msg: str = str(e)
             if isinstance(e, TimeoutError):
-                err_msg = "访问超时"
-            raise type(e)(
-                f"{err_msg }\tsource_url:{proxy_source .proxy_source_info}"
-            ) from e
+                err_msg = f"访问超时"
+            elif len(str(e)) == 0:
+                err_msg = f"未知错误"
+            else:
+                err_msg = f"{e}"
+            try:
+                error = type(e)(
+                    f"{err_msg}\t{e.__class__}\tproxy_source:{proxy_source}"
+                )
+            except:
+                error = Exception(
+                    f"{err_msg}\t{e.__class__}\tproxy_source:{proxy_source}"
+                )
+            log.warning(error)
+            raise error from e

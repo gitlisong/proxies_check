@@ -1,20 +1,20 @@
 from typing import Awaitable, Callable
 
 import aiohttp
-from attr import dataclass
-
-from .proxy_source_info import ProxySourceInfo
+from dataclasses import dataclass
 
 from .proxy_address import ProxyAddress
 
 
 @dataclass
 class ProxySource:
-    proxy_source_info: ProxySourceInfo
-
     parse: Callable[
         [aiohttp.ClientResponse, "ProxySource"], Awaitable[list[ProxyAddress]]
     ]
 
+    url: str
+
+    scheme: str | None = None
+
     def __str__(self) -> str:
-        return str(self.proxy_source_info)
+        return f"scheme:{self.scheme}\turl:{self.url}"

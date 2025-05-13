@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from ssl import SSLError
 
 import aiohttp
 
@@ -26,7 +27,9 @@ class ProxyCheckService:
             self.session.connector.limit if self.session.connector else 1
         )
 
-    async def check_all_proxies(self, proxy_addresses: list[ProxyAddress]):
+    async def check_all_proxies(
+        self, proxy_addresses: list[ProxyAddress]
+    ) -> list[ProxyServer]:
         tasks: list[asyncio.Task] = []
         for proxy_address in proxy_addresses:
             tasks.append(asyncio.create_task(self.check_proxy(proxy_address)))
@@ -35,29 +38,52 @@ class ProxyCheckService:
         for result in results:
             if isinstance(result, ProxyServer):
                 proxy_servers.append(result)
-            elif isinstance(result, Exception):
-                log.warning(result)
         return proxy_servers
 
     async def check_proxy(self, proxy_address: ProxyAddress) -> ProxyServer:
         async with self.semaphore:
-            url: str = ""
-            if self.proxy_check_target.scheme == None:
-                url = f"{proxy_address.scheme}://{self.proxy_check_target.website}"
-            else:
-                url = f"{self.proxy_check_target.scheme}://{self.proxy_check_target.website}"
-            try:
-                async with self.session.get(
-                    url,
-                    headers=self.headers,
-                    timeout=self.client_timeout,
-                    proxy=str(proxy_address),
-                ) as response:
-                    return await self.proxy_check_target.check(response, proxy_address)
-            except Exception as e:
-                err_msg: str = str(e)
-                if isinstance(e, TimeoutError):
-                    err_msg = "访问超时"
+            while True:
+                url: str = ""
+                if self.proxy_check_target.scheme == None:
+                    url = f"{proxy_address.scheme}://{self.proxy_check_target.website}"
                 else:
-                    err_msg = "未知错误"
-                raise type(e)(f"{err_msg }\tsource_url:{proxy_address}") from e
+                    url = f"{self.proxy_check_target.scheme}://{self.proxy_check_target.website}"
+                try:
+                    try:
+                        async with self.session.get(
+                            url,
+                            headers=self.headers,
+                            timeout=self.client_timeout,
+                            proxy=str(proxy_address),
+                        ) as response:
+                            proxy_server: ProxyServer = (
+                                await self.proxy_check_target.check(
+                                    response, proxy_address
+                                )
+                            )
+                            return proxy_server
+                    except SSLError as e:
+                        if proxy_address.scheme == "https":
+                            log.warning(f"使用http重试\tproxy_address:{proxy_address}")
+                            proxy_address.scheme = "http"
+                            continue
+                        else:
+                            raise
+                except Exception as e:
+                    err_msg: str = str(e)
+                    if isinstance(e, TimeoutError):
+                        err_msg = f"访问超时"
+                    elif len(str(e)) == 0:
+                        err_msg = f"未知错误"
+                    else:
+                        err_msg = f"{e}"
+                    try:
+                        error = type(e)(
+                            f"{err_msg}\t{e.__class__}\tproxy_address:{proxy_address}"
+                        )
+                    except:
+                        error = Exception(
+                            f"{err_msg}\t{e.__class__}\tproxy_address:{proxy_address}"
+                        )
+                    log.warning(error)
+                    raise error from e
