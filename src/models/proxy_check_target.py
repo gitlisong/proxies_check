@@ -3,9 +3,9 @@ from typing import Awaitable, Callable
 import aiohttp
 from dataclasses import dataclass
 
-from ..models.proxy_address import ProxyAddress
+from .proxy_address import ProxyAddress
 
-from ..models.proxy_server import ProxyServer
+from .proxy_server import ProxyServer
 
 
 @dataclass
